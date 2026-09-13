@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice Reconciliation</title>
+    <style>
+        body {
+            font-family: -apple-system, Segoe UI, Arial, sans-serif;
+            max-width: 500px;
+            margin: 60px auto;
+            background: #f5f5f7;
+            color: #1d1d1f;
+        }
+        h1 {
+            font-size: 22px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-top: 14px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 12px;
+            background: #0071e3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0077ed;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            display: none;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        #result.clean {
+            background: #e8f8ee;
+            border: 1px solid #34c759;
+        }
+        #result.discrepancy {
+            background: #fff2e8;
+            border: 1px solid #ff9500;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .badge.clean {
+            background: #34c759;
+            color: white;
+        }
+        .badge.discrepancy {
+            background: #ff9500;
+            color: white;
+        }
+        .comment {
+            font-family: monospace;
+            background: rgba(0,0,0,0.04);
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Invoice Reconciliation</h1>
+    <p style="color:#6e6e73; font-size:14px;">Monthly fixed transaction list — automated check</p>
+
+    <div class="card">
+        <label for="invoiceId">Invoice ID</label>
+        <input type="text" id="invoiceId" placeholder="INV-2026-7345" value="INV-2026-7345">
+
+        <label for="amount">Amount (yen)</label>
+        <input type="number" id="amount" placeholder="455128" value="455128">
+
+        <label for="companyName">Company Name</label>
+        <input type="text" id="companyName" placeholder="大和商事株式会社" value="大和商事株式会社">
+
+        <button onclick="checkInvoice()">Check Invoice</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function checkInvoice() {
+            const invoiceId = document.getElementById('invoiceId').value;
+            const amount = parseInt(document.getElementById('amount').value, 10);
+            const companyName = document.getElementById('companyName').value;
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = '';
+            resultDiv.innerHTML = 'Checking...';
+
+            try {
+                const response = await fetch('/api/send_invoice/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ invoiceId, amount, companyName })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server returned ' + response.status);
+                }
+
+                const data = await response.json();
+
+                if (data.discrepancyFound) {
+                    resultDiv.className = 'discrepancy';
+                    resultDiv.innerHTML = `
+                        <span class="badge discrepancy">Needs Human Review</span><br>
+                        <div class="comment">${data.generatedComment}</div>
+                    `;
+                } else {
+                    resultDiv.className = 'clean';
+                    resultDiv.innerHTML = `
+                        <span class="badge clean">Auto-Approved</span><br>
+                        <div class="comment">${data.generatedComment}</div>
+                    `;
+                }
+            } catch (err) {
+                resultDiv.className = 'discrepancy';
+                resultDiv.innerHTML = 'Error: ' + err.message + ' (check that the invoice ID exists in the reference table)';
+            }
+        }
+    </script>
+</body>
+</html>

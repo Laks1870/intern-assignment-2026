@@ -1,6 +1,4 @@
-package com.iby.invoice_reconciliation.enitity;
-
-import jakarta.persistence.Id;
+package com.iby.invoice_reconciliation.dto;
 
 public class OutputInvoice {
     private String invoiceId;

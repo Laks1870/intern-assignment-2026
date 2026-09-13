@@ -1,4 +1,9 @@
 package com.iby.invoice_reconciliation.repository;
 
-public interface ReferenceInvoiceRepository {
+import com.iby.invoice_reconciliation.enitity.ReferenceInvoice;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ReferenceInvoiceRepository extends JpaRepository<ReferenceInvoice, String> {
 }
