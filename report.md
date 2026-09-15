@@ -1,19 +1,27 @@
 ############################# REPORT ###################################
-1. # What i understand from Problem statement? #
+# What i understand from Problem statement? #
 Basically, a company has been recording everything employees do on their computers — every click, every keystroke, which app is open, when they copy-paste something — for a while now. But nobody's actually looked at this data to understand what it means. The logs just say "user clicked X" or "switched to Chrome," nothing about what task the person was actually doing.
+
 My job is to figure out, just from this raw activity, where one task starts and ends, and label repeated instances of the same task consistently. I get Dataset A to practice on, which comes with an answer key (gt.jsonl and gt_manifest.json) telling me the real start/end times for each task — so I can check how close my method gets. Dataset B doesn't have this answer key at all, and it's from a completely different department using different apps, so my method actually has to generalize, not just memorize patterns from A.
+
 Once I have these segments, I need to figure out which tasks eat up the most time across the department, decide which ones are worth automating, and actually build something that automates one of them — being honest about what I'm assuming, what a human would still need to do afterward, and what could realistically go wrong if this got deployed for real.
 
-2. # Understanding the Dataset #
+# Understanding the Dataset #
 The data comes in two parts. Dataset A has 63 sessions with about 162,000 events total, and comes with the answer key. Dataset B has 15 sessions, around 20,000 events, no answer key, and is from a different department doing different work with different apps — this is the "real" data I actually need to produce results for.
+
 Each session represents one continuous recording of a worker's PC activity, but it's split into multiple "chunks" — this split is just how the recording tool happens to save files, it has nothing to do with when a task actually starts or stops. A single business process can easily start in one chunk and finish in the next one, so before doing anything else, I had to stitch a session's chunks back together in the right time order.
+
 Inside each chunk, events.jsonl has the raw log — one line per action, things like app_switch, keystroke, mouse_click, clipboard_change. Every event has a timestamp, which app was active, and some extra metadata depending on the event type. About 4% of events also carry extracted_text — actual text read off the screen at that moment, which turned out to be one of the most useful signals I had, since it sometimes captured the literal instructions or data a worker was looking at.
+
 For Dataset A only, gt.jsonl records the real business process boundaries — when a process started, when it got switched out, when it resumed after being paused, and so on. gt_manifest.json is a cleaner, summarized version of the same information, grouped by process type and execution.
+
 One thing I noticed early on: the ground truth data isn't perfectly clean either. The schema documentation itself warns that some things don't line up consistently (e.g., a process switch doesn't always have a matching start event), and I ran into this myself later when trying to track a paused-and-resumed process — the case ID before and after the pause didn't even match.
+
 Since everything is from a Japanese company, process names, window titles, and any on-screen text are in Japanese. I didn't translate everything, just the pieces I actually needed for labeling and building the Step 3 automation.
 
-3. # How I approached this, and dividing it into three steps #
+# How I approached this, and dividing it into three steps #
 Before writing any code, I spent time just reading through one real session's raw events side by side with its ground truth, trying to spot patterns by hand rather than jumping straight to an algorithm. This mattered a lot — a few ideas that looked reasonable on paper (like using clipboard events as the main signal for a new task starting) turned out to be wrong once I checked them against real timestamps, and I would have wasted time building on a bad assumption otherwise.
+
 Once I had a feel for the data, I split the work the same way the assignment is structured:
 
 Step 1 — Segmentation Turn the raw, unlabeled event stream into a list of segments, each one representing a single execution of a business process. I built this entirely on Dataset A, since it's the only place I could check my accuracy against a real answer key, then applied the same method, unchanged, to Dataset B.
@@ -24,7 +32,7 @@ Step 3 — Automation. I picked the process that ranked well and also looked gen
 
 Within Step 1 specifically, I broke the problem down further into a set of smaller, individually testable questions — how do I filter out recorder noise, how do I decide where one task ends and another begins, how do I handle a session split across multiple files, how do I label two different executions of the same process consistently, and so on. I'll go through each of these one at a time in the next section, since each one involved a real decision backed by evidence from the data, not just a guess.
 
-4. # Step 1 in detail — the factors I worked through, with real examples #
+# Step 1 in detail — the factors I worked through, with real examples #
 # Factor 1 — Filtering out noise 
 The very first thing I noticed when I looked at raw app_switch events was that they're not reliable on their own. In one 10-minute chunk, there were 365 app_switch events, but a lot of them were obviously not real transitions. For example, at one point I saw over 20 app_switch events fire within less than a second, all pointing to the exact same window — same process_id (3924), same window title (財務会計システム - Google Chrome), and every single one tagged with trigger: window_click. That told me the recorder was logging an app_switch event every time the worker clicked somewhere inside an already-focused window, not because they actually switched anywhere.
 
@@ -104,17 +112,17 @@ Before ranking anything, I had to deal with an issue in my own labeling. Three o
 The reasoning: total time cost tells me how much time automating this process could realistically save across the department, and the exception rate discounts that score for processes that vary a lot case-to-case, since those are inherently riskier and harder to automate reliably.
 
 # Final ranking:
-
-Process	                            Total time (s)    Exception rate	Priority score
-new_supplier_contract	                     385	           12.0%	    338.8
-new_supplier_registration			         350               15.4%        296.2
-monthly_fixed_transaction_list	277	0%	                                    277.0
-new_hire_checklist	286	7.1%	                                            265.6
-outsourcing_expense_regulations	249	13.9%	                                214.4
-outsourcing_acceptance	168	0%	                                            168.0
-contract_termination	100	0%	                                            100.0
-admin_authority_application	57	0%	                                         57.0
-childcare_leave_regulations	43	0%	                                         43.0
+| Process | Total time (s) | Exception rate | Priority score |
+|---|---|---|---|
+| new_supplier_contract | 385 | 12.0% | 338.8 |
+| new_supplier_registration | 350 | 15.4% | 296.2 |
+| monthly_fixed_transaction_list | 277 | 0% | 277.0 |
+| new_hire_checklist | 286 | 7.1% | 265.6 |
+| outsourcing_expense_regulations | 249 | 13.9% | 214.4 |
+| outsourcing_acceptance | 168 | 0% | 168.0 |
+| contract_termination | 100 | 0% | 100.0 |
+| admin_authority_application | 57 | 0% | 57.0 |
+| childcare_leave_regulations | 43 | 0% | 43.0 |
 
 new_supplier_contract ranks highest by raw score, but monthly_fixed_transaction_list stood out to me for a different reason: it's the single most frequent process (55 occurrences) and had a 0% observed exception rate — meaning every single execution I could check followed the exact same pattern. That combination — high volume, zero observed variance — is close to the ideal profile for automation: I can be far more confident it'll behave predictably in production than a process with a 12-15% exception rate, even if that process scores slightly higher on raw time saved. This is why I chose monthly_fixed_transaction_list for Step 3, prioritizing reliability over the highest possible score.
 
