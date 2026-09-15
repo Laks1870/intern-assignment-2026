@@ -6,4 +6,4 @@ University-IIT BHUBANESWAR
 
 Department-Electrical Engineering
 
-Email address-xlakshayx.army@gmail.com
+Email address- xlakshayx.army@gmail.com
