@@ -158,4 +158,46 @@ The actual master reference list — the real "source of truth" a worker checks 
 # What manual work remains after this is deployed
 This prototype only handles the comparison and generates the correct comment text — it doesn't actually write that comment back into the real finance system, since I have no access to that system. A human would still need to: connect this service to the real reference database (not my mock table), wire the output into the actual finance portal so the comment gets posted automatically, and manually review every case flagged requiresHumanReview: true, since my system deliberately doesn't try to resolve discrepancies on its own — it escalates them, as the actual business rule instructs.
 
-#
+## Running Step 3 (Invoice Reconciliation Backend)
+
+### Prerequisites
+- Java 17+
+- Maven (or use the included `mvnw`/`mvnw.cmd` wrapper — no separate install needed)
+- MySQL Server installed and running locally
+- (Optional) DBeaver or any MySQL client, for inspecting/seeding the database
+
+### 1. Create the database
+Using DBeaver, MySQL Workbench, or the `mysql` CLI, run:
+```sql
+CREATE DATABASE invoice_reconciliation;
+```
+
+### 2. Configure database credentials
+Open `step_3_invoice-reconciliation/src/main/resources/application.properties`
+and update the username/password to match your local MySQL setup:
+```properties
+spring.datasource.url=jdbc:mysql://localhost:3306/invoice_reconciliation?allowPublicKeyRetrieval=true&useSSL=false
+spring.datasource.username=root
+spring.datasource.password=YOUR_MYSQL_PASSWORD
+```
+
+### 3. Run the application
+```bash
+cd step_3_invoice-reconciliation
+mvnw.cmd spring-boot:run       # Windows
+./mvnw spring-boot:run         # Mac/Linux
+```
+Spring Boot will automatically create the `input_invoice` and `reference_invoice`
+tables on first run (via `spring.jpa.hibernate.ddl-auto=update`).
+
+### 4. Seed the reference data
+Once the app has started (and the tables exist), run the seed SQL found in
+`step_3_invoice-reconciliation/seed_data.sql` against the `invoice_reconciliation`
+database.
+
+### 5. Try it out
+- API: `POST http://localhost:8080/api/send_invoice/check`
+```json
+  { "invoiceId": "INV-2026-7345", "amount": 455128, "companyName": "北陸部品工業株式会社" }
+```
+- Frontend demo: open `http://localhost:8080/index.html` in a browser
